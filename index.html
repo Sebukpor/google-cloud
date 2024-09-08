@@ -3,113 +3,140 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Malaria Detection - DAS medhub</title>
+    <title>Tuberculosis Detection - DAS medhub</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
-            text-align: center;
             margin: 20px;
+            text-align: center;
         }
 
         h1 {
-            color: #FFA500; /* Orange for DAS */
-            display: inline;
+            color: #333;
         }
 
-        h1 span {
-            color: #008000; /* Green for medhub */
-        }
-
-        #image-container {
-            margin-top: 20px;
-        }
-
-        #result {
-            margin-top: 20px;
-            font-size: 1.5em;
+        .header-title {
+            font-size: 32px;
             font-weight: bold;
         }
 
-        #predict-button {
-            display: none;
-            margin-top: 20px;
+        .header-title .das {
+            color: green;
+        }
+
+        .header-title .medhub {
+            color: orange;
+        }
+
+        label {
+            display: block;
+            margin: 20px 0 10px;
+        }
+
+        input[type="file"] {
+            margin-bottom: 20px;
+        }
+
+        button {
             padding: 10px 20px;
-            font-size: 16px;
-            background-color: #4CAF50;
+            background-color: green;
             color: white;
             border: none;
-            border-radius: 5px;
             cursor: pointer;
         }
 
-        #predict-button:disabled {
-            background-color: #ccc;
-            cursor: not-allowed;
+        button:hover {
+            background-color: darkgreen;
+        }
+
+        #predictionResult {
+            margin-top: 30px;
+            font-size: 20px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        img {
+            max-width: 100%;
+            height: auto;
+            margin-top: 20px;
         }
     </style>
 </head>
 <body>
-    <h1>DAS <span>medhub</span></h1>
-    <h2>Malaria Detection using Blood Smear Images</h2>
-
-    <input type="file" id="image-upload" accept="image/*">
-    <button id="predict-button" onclick="predict()">Predict</button>
-
-    <div id="image-container">
-        <img id="uploaded-image" src="#" alt="Uploaded Image" style="max-width: 300px; display: none;">
+    <div class="header">
+        <h1 class="header-title"><span class="das">DAS</span> <span class="medhub">medhub</span></h1>
     </div>
 
-    <div id="result"></div>
+    <h1>Tuberculosis Detection from Chest X-Ray</h1>
+    <form>
+        <label for="imageUpload">Upload Chest X-Ray Image:</label>
+        <input type="file" id="imageUpload" accept="image/*">
+        <img id="preview" alt="X-Ray Preview" style="display:none;">
+        <button type="button" onclick="predict()">Make Prediction</button>
+    </form>
+
+    <div id="predictionResult">Prediction will appear here.</div>
 
     <script>
         let model;
 
+        // Load the TensorFlow.js model (converted from your TensorFlow model)
         async function loadModel() {
-            const modelUrl = 'https://storage.googleapis.com/malaria_detection/malaria_model/model.json';
-            model = await tf.loadGraphModel(modelUrl);
-            console.log('Model loaded');
+            model = await tf.loadGraphModel('model/model.json');
+            console.log("Model loaded successfully!");
         }
 
-        loadModel();
+        // Preprocess the uploaded image
+        async function preprocessImage(imageElement) {
+            // Load the image into a tensor
+            let tensor = tf.browser.fromPixels(imageElement)
+                .resizeNearestNeighbor([224, 224]) // Resize to match the model's expected input size
+                .toFloat()
+                .expandDims(); // Add batch dimension
 
-        const imageUpload = document.getElementById('image-upload');
-        const uploadedImage = document.getElementById('uploaded-image');
-        const predictButton = document.getElementById('predict-button');
-        const resultDiv = document.getElementById('result');
+            // Normalize the image to [0,1] range
+            return tensor.div(tf.scalar(255));
+        }
 
-        imageUpload.addEventListener('change', (event) => {
-            const file = event.target.files[0];
+        // Make a prediction
+        async function predict() {
+            if (!model) {
+                alert("Model not loaded. Please wait for the model to load.");
+                return;
+            }
+
+            const fileInput = document.getElementById('imageUpload');
+            const img = document.getElementById('preview');
             const reader = new FileReader();
 
-            reader.onload = function(e) {
-                uploadedImage.src = e.target.result;
-                uploadedImage.style.display = 'block';
-                predictButton.style.display = 'inline-block'; // Show the predict button
+            reader.onload = function (event) {
+                img.src = event.target.result;
+                img.style.display = 'block';
+
+                img.onload = async function () {
+                    const preprocessedImage = await preprocessImage(img);
+                    const prediction = model.predict(preprocessedImage);
+                    const confidence = prediction.dataSync()[0];
+
+                    const resultText = confidence > 0.5 
+                        ? "Prediction: Tuberculosis detected with high confidence." 
+                        : "Prediction: No tuberculosis detected.";
+                    
+                    document.getElementById('predictionResult').innerText = resultText;
+                };
             };
 
-            reader.readAsDataURL(file);
-        });
-
-        async function predict() {
-            predictButton.disabled = true; // Disable the button during prediction
-            resultDiv.innerText = 'Predicting...';
-
-            // Preprocess the image
-            const tensorImg = tf.browser.fromPixels(uploadedImage)
-                .resizeNearestNeighbor([128, 128]) // Resize to 128x128 (or your model's input size)
-                .toFloat()
-                .expandDims(0)
-                .div(tf.scalar(255));
-
-            // Make the prediction
-            const predictions = await model.predict(tensorImg).data();
-            const result = predictions[0] > 0.5 ? 'Uninfected' : 'Infected';
-
-            // Display the result
-            resultDiv.innerText = `Prediction: ${result}`;
-            predictButton.disabled = false; // Enable the button again
+            if (fileInput.files[0]) {
+                reader.readAsDataURL(fileInput.files[0]);
+            } else {
+                alert("Please upload an image.");
+            }
         }
+
+        // Load the model when the page loads
+        window.onload = loadModel;
     </script>
 </body>
 </html>
